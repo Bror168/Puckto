@@ -30,7 +30,7 @@ TLC5947 tlc(DEVICES, CLOCK, DATA, LATCH, BLANK);
 
 const int ZERO_B = 0;                     //  zero brightness
 const int MAX_B = 4095;                   //  100% brightness 4095
-int a = 4;                            //  current brightness
+int a = 4000;                            //  current brightness
 
 enum MenuMode {
   MENU_MAIN,
@@ -58,7 +58,7 @@ int selectedIndex = 0;
 int activeSubmenu = -1;   
 
 
-int blinkSpeed[] = {5,5}; // [on, off] 
+int blinkSpeed[] = {50, 50, 10}; // [on, off, program längd sek] 
 int blink_select=0;
       
 int brightness = 5;        
@@ -145,13 +145,17 @@ void drawSubmenu() {
   if (activeSubmenu == 0) { // Blinkhastighet
     display.setCursor(0, 0);
     display.println("Blink speed");
-    display.setCursor(0, 16);
+    display.setCursor(0, 14);
     display.print("on: ");
-    display.println(blinkSpeed[0]);
+    display.print(blinkSpeed[0]);
     display.println(" ms");
-    display.setCursor(0, 32);
+    display.setCursor(0, 28);
     display.print("off: ");
-    display.println(blinkSpeed[1]);
+    display.print(blinkSpeed[1]);
+    display.println(" ms");
+     display.setCursor(0, 42);
+    display.print("runtime:");
+    display.print(blinkSpeed[2]);
     display.println(" S");
   } else if (activeSubmenu == 1) { // Ljusstyrka
     display.setCursor(0, 0);
@@ -170,27 +174,41 @@ void drawSubmenu() {
   } else if (activeSubmenu == 3) { // run
    //Lampa
     int start = 0;
-    if (colorIndex==1) start=1;
-    for (int i = start; i < led; i+=2){
-      tlc.setPWM(i, a);
-      tlc.write();
-      Serial.print(i);
-      Serial.print(" = ");
-      Serial.println(a);
-    }
-    delay(wait);
-    for (int i = 0; i < led; i++){
-      tlc.setPWM(i, 0);
-      tlc.write();
-      Serial.print(i);
-      Serial.print(" = ");
-      Serial.println(a);
-    }
-    
-  }
+    float runs = blinkSpeed[2]*1000/(blinkSpeed[0]+blinkSpeed[1]+18.0198019802); //+ 18 då det tar tid att tända/släcka lamporna
 
-  display.setCursor(0, 48);
-  display.println("Press to go back");
+    unsigned long startTime;
+    unsigned long endTime;
+
+    // ! viktikgt ! 
+    // Då det tar tid att stänga av/ på lamporna måste jag koreskera för det. 
+    // Lista ut hur snabt det tar att stänga av / på 
+    // ! viktikgt !
+
+    if (colorIndex==1) start=1;
+    startTime = millis();
+    for (float z=0.0; z<runs; z++){
+      for (int i = start; i < led; i+=2){
+        tlc.setPWM(i, a);
+        tlc.write();
+      }
+      delay(blinkSpeed[0]);
+      for (int i = start; i < led; i+=2){
+        tlc.setPWM(i, 0);
+        tlc.write();
+      }
+      delay(blinkSpeed[1]);  
+    }
+    endTime = millis();
+    display.setCursor(0, 48);
+    display.print(endTime-startTime);
+
+    display.print("ms | ");
+    display.println(runs);
+  }
+    
+
+  //display.setCursor(0, 48);
+  //display.println("Press to go back");
 
   display.display();
 }
@@ -228,6 +246,13 @@ void setup() {
   Wire.setSDA(PIN_I2C_SDA);
   Wire.setSCL(PIN_I2C_SCL);
   Wire.begin();
+  for (int i = 0; i < led; i++){
+      tlc.setPWM(i, 0);
+      tlc.write();
+      Serial.print(i);
+      Serial.print(" = ");
+      Serial.println(a);
+    }
 
   
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
@@ -258,14 +283,15 @@ void loop() {
       localNeedRedraw = true;
     } else { // MENU_SUB
       if (activeSubmenu == 0) {
-        // encoder adjusts blinkSpeed for the currently selected blink index
-        blinkSpeed[blink_select] = step * 10 + blinkSpeed[blink_select];
-        if (blinkSpeed[blink_select] <= 0) blinkSpeed[blink_select] = 1;
+        int mod = 10;
+        if (blink_select==2) mod=1;
+        blinkSpeed[blink_select] = step * mod + blinkSpeed[blink_select];
+        if (blinkSpeed[blink_select] <= 0) blinkSpeed[blink_select] = 0;
         localNeedRedraw = true;
 
       } else if (activeSubmenu == 1) {
         a = step * 10 + a;
-        if (a <= 0) a = 1;
+        if (a <= 0) a = 0;
         localNeedRedraw = true;
 
       } else if (activeSubmenu == 2) {
@@ -290,6 +316,10 @@ void loop() {
         if (blink_select == 0) {
           // first press: switch to second blink selector
           blink_select = 1;
+        }
+        else if (blink_select == 1) {
+          // first press: switch to second blink selector
+          blink_select = 2;
         } else {
           // next press: return to main menu
           blink_select = 0;
