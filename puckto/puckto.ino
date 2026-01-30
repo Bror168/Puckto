@@ -3,10 +3,25 @@
 #include <Adafruit_SSD1306.h>
 #include "TLC5947.h"
 
+#include <Arduino.h>
+#include "hardware/flash.h"
+#include "hardware/sync.h"
+
+#define FLASH_TARGET_OFFSET (256 * 1024) // safe area
+#define DATA_COUNT 8
+
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1   
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+//Storage
+const uint8_t *flash_ptr = (const uint8_t *)(XIP_BASE + FLASH_TARGET_OFFSET);
+int save[DATA_COUNT] = {1, 2, 3, 4, 32, 1, 2, 5};
+int storedData[DATA_COUNT];
+bool flashLoaded = false;
+
+
 
 //pins
 const int PIN_ENC_CLK = 15;  // CLK
@@ -80,21 +95,37 @@ int clampInt(int v, int lo, int hi) {
 }
 
 int readEncoderStep() {
-  int step = 0;
-  int clkState = digitalRead(PIN_ENC_CLK);
+  static uint8_t lastState = 0;
+  static int8_t stepSum = 0;
+  uint8_t state = (digitalRead(PIN_ENC_CLK) << 1) |
+                   digitalRead(PIN_ENC_DT);
+  int8_t delta = 0;
 
-  if (clkState != lastClkState) {
-    if (clkState == HIGH) {
-      if (digitalRead(PIN_ENC_DT) == LOW) {
-        step = +1;
-      } else {
-        step = -1;
-      }
+  if      (lastState == 0b00 && state == 0b01) delta = +1;
+  else if (lastState == 0b01 && state == 0b11) delta = +1;
+  else if (lastState == 0b11 && state == 0b10) delta = +1;
+  else if (lastState == 0b10 && state == 0b00) delta = +1;
+
+  else if (lastState == 0b00 && state == 0b10) delta = -1;
+  else if (lastState == 0b10 && state == 0b11) delta = -1;
+  else if (lastState == 0b11 && state == 0b01) delta = -1;
+  else if (lastState == 0b01 && state == 0b00) delta = -1;
+
+  lastState = state;
+
+  if (delta != 0) {
+    stepSum += delta;
+    if (stepSum >= 4) {
+      stepSum = 0;
+      return -1;
     }
-    lastClkState = clkState;
+    else if (stepSum <= -4) {
+      stepSum = 0;
+      return +1;
+    }
   }
 
-  return step;
+  return 0;
 }
 
 bool buttonPressed() {
@@ -146,14 +177,17 @@ void drawSubmenu() {
     display.setCursor(0, 0);
     display.println("Blink speed");
     display.setCursor(0, 14);
+    if (blink_select==0) display.print("> ");
     display.print("on: ");
     display.print(blinkSpeed[0]);
     display.println(" ms");
     display.setCursor(0, 28);
+    if (blink_select==1) display.print("> ");
     display.print("off: ");
     display.print(blinkSpeed[1]);
     display.println(" ms");
-     display.setCursor(0, 42);
+    display.setCursor(0, 42);
+    if (blink_select==2) display.print("> ");
     display.print("runtime:");
     display.print(blinkSpeed[2]);
     display.println(" S");
@@ -224,6 +258,45 @@ void redraw() {
 
   needRedraw = false;
 }
+// save
+void Save() {
+  save[0] = blinkSpeed[0];
+  save[1] = blinkSpeed[1];
+  save[2] = blinkSpeed[2];
+  save[3] = a;
+  save[4] = colorIndex;
+
+  uint32_t ints = save_and_disable_interrupts();
+  flash_range_erase(FLASH_TARGET_OFFSET, FLASH_SECTOR_SIZE);
+  flash_range_program(
+    FLASH_TARGET_OFFSET,
+    (uint8_t *)save,
+    sizeof(save)
+  );
+  restore_interrupts(ints);
+}
+
+
+//read
+void Read(int *buffer) {
+  memcpy(buffer, flash_ptr, sizeof(save));
+}
+
+//load
+void Load() {
+  Read(storedData);
+
+  if (storedData[0] <= 0 || storedData[0] > 5000) return;
+
+  blinkSpeed[0] = storedData[0];
+  blinkSpeed[1] = storedData[1];
+  blinkSpeed[2] = storedData[2];
+  a             = storedData[3];
+  colorIndex    = storedData[4];
+
+  flashLoaded = true;
+}
+
 
 //setup & main loop
 void setup() {
@@ -260,7 +333,7 @@ void setup() {
   }
   display.clearDisplay();
   display.display();
-
+  Load();
   needRedraw = true;
 }
 
@@ -290,8 +363,10 @@ void loop() {
         localNeedRedraw = true;
 
       } else if (activeSubmenu == 1) {
-        a = step * 10 + a;
+        if (a>500) a = step * 100 + a;
+        if (a<=500) a = step * 10 + a;
         if (a <= 0) a = 0;
+        if (a >4000) a=4000;
         localNeedRedraw = true;
 
       } else if (activeSubmenu == 2) {
@@ -331,6 +406,7 @@ void loop() {
         // Other submenus: single button press -> back to main
         menuMode = MENU_MAIN;
         activeSubmenu = -1;
+        Save();
         localNeedRedraw = true;
       }
     }
