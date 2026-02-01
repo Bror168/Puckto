@@ -3,23 +3,30 @@
 #include <Adafruit_SSD1306.h>
 #include "TLC5947.h"
 
+#include <string> 
+#include <sstream>  
+
 #include <Arduino.h>
 #include "hardware/flash.h"
 #include "hardware/sync.h"
+#include <EEPROM.h>
 
-#define FLASH_TARGET_OFFSET (256 * 1024) // safe area
-#define DATA_COUNT 8
+#define FLASH_TARGET_OFFSET 0x100000  // 1 MB mark, must be sector aligned
+#define DATA_COUNT 30
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1   
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-//Storage
+//Storage and settings
 const uint8_t *flash_ptr = (const uint8_t *)(XIP_BASE + FLASH_TARGET_OFFSET);
-int save[DATA_COUNT] = {1, 2, 3, 4, 32, 1, 2, 5};
+int save[DATA_COUNT] = {0,50,50,10,100,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 int storedData[DATA_COUNT];
 bool flashLoaded = false;
+int setings = 1;
+int options = 0;
+int options_menu = 0;
 
 
 
@@ -56,9 +63,10 @@ const char* mainItems[] = {
   "Blink speed",
   "Intensity",
   "Color",
-  "run"
+  "run",
+  "pre saves"
 };
-const int MAIN_ITEM_COUNT = 4;
+const int MAIN_ITEM_COUNT = 5;
 
 const char* colors[] = {
   "BLue",
@@ -151,11 +159,10 @@ void drawMainMenu() {    // Ritar menyer
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
 
-  display.setCursor(0, 0);
-  display.println("MENU");
+  
 
   for (int i = 0; i < MAIN_ITEM_COUNT; i++) {
-    int y = 16 + i * 12;
+    int y = 2+ i * 12;
     display.setCursor(0, y);
     if (i == selectedIndex) {
       display.print("> ");
@@ -238,8 +245,48 @@ void drawSubmenu() {
 
     display.print("ms | ");
     display.println(runs);
+
+  } else if (activeSubmenu == 4 && options_menu==0) {
+    //display.setCursor(0, 32);
+    //display.println("testtttt");
+    Read(storedData);
+    String name = " ";
+    int shit_variabel=0;
+    for (int i=5; i<30; i++){
+      name+= String(save[i]) + ".";
+      if((i + 1) % 5 == 0){
+        int y = 2 + shit_variabel*12;
+        display.setCursor(0, y);
+        if (i+1==setings*5 + 5){
+          display.print("> ");
+        }else {
+          display.print("  ");
+        }
+        display.println(name);
+        name = " ";
+        shit_variabel++;
+      }
+
+    }
+
+  } else if (activeSubmenu == 4 && options_menu==1) {
+    const char * options_list[]={"Use", "Save", "Cancel"};
+        display.setCursor(10, 26);
+        for (int i=0; i<3; i++) {
+          if (options==i){
+            display.print("[");
+            display.print(options_list[i]);
+            display.print("]");
+          } else{ 
+            display.print(" ");
+            display.print(options_list[i]);
+            display.print(" ");
+          }
+        }
+        display.println();
   }
-    
+
+
 
   //display.setCursor(0, 48);
   //display.println("Press to go back");
@@ -259,47 +306,57 @@ void redraw() {
   needRedraw = false;
 }
 // save
-void Save() {
-  save[0] = blinkSpeed[0];
-  save[1] = blinkSpeed[1];
-  save[2] = blinkSpeed[2];
-  save[3] = a;
-  save[4] = colorIndex;
+void Save(int start) {
+  save[start*5+0] = colorIndex;
+  save[start*5+1] = blinkSpeed[0];
+  save[start*5+2] = blinkSpeed[1];
+  save[start*5+3] = blinkSpeed[2];
+  save[start*5+4] = a;
 
-  uint32_t ints = save_and_disable_interrupts();
-  flash_range_erase(FLASH_TARGET_OFFSET, FLASH_SECTOR_SIZE);
-  flash_range_program(
-    FLASH_TARGET_OFFSET,
-    (uint8_t *)save,
-    sizeof(save)
-  );
-  restore_interrupts(ints);
+  // Write all 30 integers to EEPROM
+  for (int i = 0; i < DATA_COUNT; i++) {
+    int addr = i * sizeof(int);  // each int takes 4 bytes
+    EEPROM.put(addr, save[i]);
+  }
+
+  EEPROM.commit(); // push changes to flash
 }
 
 
-//read
+
+// --- Read settings from EEPROM ---
 void Read(int *buffer) {
-  memcpy(buffer, flash_ptr, sizeof(save));
+  for (int i = 0; i < DATA_COUNT; i++) {
+    int addr = i * sizeof(int);
+    EEPROM.get(addr, buffer[i]);
+  }
 }
 
-//load
-void Load() {
+// --- Load a specific preset ---
+void Load(int start) {
   Read(storedData);
+  // basic sanity check
+  //if (storedData[0] < 0 || storedData[0] > 5000) return;
 
-  if (storedData[0] <= 0 || storedData[0] > 5000) return;
-
-  blinkSpeed[0] = storedData[0];
-  blinkSpeed[1] = storedData[1];
-  blinkSpeed[2] = storedData[2];
-  a             = storedData[3];
-  colorIndex    = storedData[4];
+  colorIndex    = storedData[start*5+0];
+  blinkSpeed[0] = storedData[start*5+1];
+  blinkSpeed[1] = storedData[start*5+2];
+  blinkSpeed[2] = storedData[start*5+3];
+  a             = storedData[start*5+4];
 
   flashLoaded = true;
 }
 
 
+
 //setup & main loop
 void setup() {
+  Serial.begin(115200);
+  // Initialize EEPROM with enough size for 30 ints (4 bytes each = 120 bytes)
+  EEPROM.begin(DATA_COUNT * sizeof(int));
+  // other init code...
+  Load(0);  // load first preset at startup
+
   Serial.begin(115200);                   //  initialize Serial Output
   Serial.println(__FILE__);
   Serial.print("TLC5947_LIB_VERSION: \t");
@@ -333,7 +390,6 @@ void setup() {
   }
   display.clearDisplay();
   display.display();
-  Load();
   needRedraw = true;
 }
 
@@ -374,6 +430,17 @@ void loop() {
         if (colorIndex < 0) colorIndex = COLOR_COUNT - 1;
         if (colorIndex >= COLOR_COUNT) colorIndex = 0;
         localNeedRedraw = true;
+      
+      } else if (activeSubmenu == 4 && options_menu==0){
+        setings+= step;
+        if (setings>5) setings=1;
+        if (setings<1) setings=5;
+        localNeedRedraw = true;
+      } else if (activeSubmenu == 4 && options_menu==1){
+        options+= step;
+        if (options>2) options=0;
+        if (options<0) options=2;
+        localNeedRedraw = true;
       }
     }
   }
@@ -385,9 +452,8 @@ void loop() {
       activeSubmenu = selectedIndex;
       menuMode = MENU_SUB;
       localNeedRedraw = true;
-    } else { // we are in MENU_SUB
+    } else if (activeSubmenu == 0){ // we are in MENU_SUB
       // Submenu 0 needs its own button semantics (toggle/select/exit)
-      if (activeSubmenu == 0) {
         if (blink_select == 0) {
           // first press: switch to second blink selector
           blink_select = 1;
@@ -402,16 +468,36 @@ void loop() {
           activeSubmenu = -1;
         }
         localNeedRedraw = true;
+    } else if (activeSubmenu == 4) {
+      if (options_menu==1){
+        if (options==0){
+          Load(setings);
+          options_menu=0;
+          menuMode = MENU_MAIN;
+          activeSubmenu = -1;
+        } else if (options==1){
+          Save(setings);
+          options_menu=0;
+          menuMode = MENU_MAIN;
+          activeSubmenu = -1;
+        } else if (options==2){
+          options_menu=0;
+          menuMode = MENU_MAIN;
+          activeSubmenu = -1;
+        } 
       } else {
+        options_menu=1;
+      }
+      localNeedRedraw = true;
+        
+    } else {
         // Other submenus: single button press -> back to main
         menuMode = MENU_MAIN;
         activeSubmenu = -1;
-        Save();
+        Save(0);
         localNeedRedraw = true;
       }
     }
-  }
-
   // Apply redraw flag
   if (localNeedRedraw) needRedraw = true;
 
