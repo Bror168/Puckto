@@ -9,9 +9,8 @@
 #include <Arduino.h>
 #include "hardware/flash.h"
 #include "hardware/sync.h"
-#include <EEPROM.h>
 
-#define FLASH_TARGET_OFFSET 0x100000  // 1 MB mark, must be sector aligned
+#define FLASH_TARGET_OFFSET (256 * 1024) // safe area
 #define DATA_COUNT 30
 
 #define SCREEN_WIDTH 128
@@ -21,7 +20,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 //Storage and settings
 const uint8_t *flash_ptr = (const uint8_t *)(XIP_BASE + FLASH_TARGET_OFFSET);
-int save[DATA_COUNT] = {0,50,50,10,100,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+int save[DATA_COUNT] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 int storedData[DATA_COUNT];
 bool flashLoaded = false;
 int setings = 1;
@@ -219,6 +218,7 @@ void drawSubmenu() {
 
     unsigned long startTime;
     unsigned long endTime;
+    //int tid_kvar= blinkSpeed[2]/runs;
 
     // ! viktikgt ! 
     // Då det tar tid att stänga av/ på lamporna måste jag koreskera för det. 
@@ -228,6 +228,14 @@ void drawSubmenu() {
     if (colorIndex==1) start=1;
     startTime = millis();
     for (float z=0.0; z<runs; z++){
+      display.clearDisplay();
+      //display.setCursor(4, 14); 
+      //display.print("- tid kvar: ");
+      //display.print(round(blinkSpeed[2]-z*tid_kvar));
+      //display.println(" s -");
+      display.setCursor(28, 28); 
+      display.println("- AVBRYT -");
+      display.display();
       for (int i = start; i < led; i+=2){
         tlc.setPWM(i, a);
         tlc.write();
@@ -237,7 +245,36 @@ void drawSubmenu() {
         tlc.setPWM(i, 0);
         tlc.write();
       }
-      delay(blinkSpeed[1]);  
+      delay(blinkSpeed[1]); 
+    
+    if (buttonPressed()) {
+      for (int nedrakning = 10; nedrakning > 0; nedrakning--) {
+        display.clearDisplay(); 
+        display.setCursor(32, 14);
+        display.println("-pausad-");
+        display.setCursor(0, 28);
+        display.println(" -AVBRYT? SAKER? -"); 
+        display.setCursor(0, 42); 
+        display.print("- fortsatter om ");
+        display.print(nedrakning);
+        display.println(" -");
+        display.display();
+
+        bool avbruten = false;
+        for (int j = 0; j < 10; j++) {
+          if (buttonPressed()) {
+            z += runs;      
+            avbruten = true; 
+            break;          
+          }
+          delay(100); 
+        } 
+        if (avbruten) {
+          break; 
+        }
+      }
+      display.clearDisplay();
+      display.display();
     }
     endTime = millis();
     display.setCursor(0, 48);
@@ -245,34 +282,39 @@ void drawSubmenu() {
 
     display.print("ms | ");
     display.println(runs);
-
+    }
+  // Loopa igenom de 5 sparnings-slottarna
   } else if (activeSubmenu == 4 && options_menu==0) {
-    //display.setCursor(0, 32);
-    //display.println("testtttt");
-    Read(storedData);
-    String name = " ";
-    int shit_variabel=0;
-    for (int i=5; i<30; i++){
-      name+= String(save[i]) + ".";
-      if((i + 1) % 5 == 0){
-        int y = 2 + shit_variabel*12;
-        display.setCursor(0, y);
-        if (i+1==setings*5 + 5){
-          display.print("> ");
-        }else {
-          display.print("  ");
-        }
-        display.println(name);
-        name = " ";
-        shit_variabel++;
+    for (int slot = 1; slot <= 5; slot++) {
+      int y = 2 + (slot - 1) * 12;
+      display.setCursor(0, y);
+
+      if (setings == slot) {
+        display.print("> ");
+      } else {
+        display.print("  ");
       }
 
-    }
+      int mem_color = save[slot*5 + 0];
+      int mem_a = save[slot*5 + 4];
 
-  } else if (activeSubmenu == 4 && options_menu==1) {
-    const char * options_list[]={"Use", "Save", "Cancel"};
-        display.setCursor(10, 26);
-        for (int i=0; i<3; i++) {
+      if (mem_color !=0 && mem_color !=1) {
+        display.print("Save ");
+        display.print(slot);
+        display.println(": Empty");
+      } else {
+        display.print("Save ");
+        display.print(slot);
+        display.print(":");
+        display.println(colors[mem_color]);
+        
+      }
+
+    } }else if (activeSubmenu == 4 && options_menu==1) {
+      const char * options_list[]={"Use", "Save", "Cancel"};
+      display.clearDisplay();
+      display.setCursor(10, 26);
+      for (int i=0; i<3; i++) {
           if (options==i){
             display.print("[");
             display.print(options_list[i]);
@@ -284,6 +326,7 @@ void drawSubmenu() {
           }
         }
         display.println();
+        display.display();
   }
 
 
@@ -310,53 +353,44 @@ void Save(int start) {
   save[start*5+0] = colorIndex;
   save[start*5+1] = blinkSpeed[0];
   save[start*5+2] = blinkSpeed[1];
-  save[start*5+3] = blinkSpeed[2];
+  save[start*5+3] = blinkSpeed[2]; 
   save[start*5+4] = a;
+  
 
-  // Write all 30 integers to EEPROM
-  for (int i = 0; i < DATA_COUNT; i++) {
-    int addr = i * sizeof(int);  // each int takes 4 bytes
-    EEPROM.put(addr, save[i]);
-  }
-
-  EEPROM.commit(); // push changes to flash
+  uint32_t ints = save_and_disable_interrupts();
+  flash_range_erase(FLASH_TARGET_OFFSET, FLASH_SECTOR_SIZE);
+  flash_range_program(
+    FLASH_TARGET_OFFSET,
+    (uint8_t *)save,
+    sizeof(save)
+  );
+  restore_interrupts(ints);
 }
 
 
-
-// --- Read settings from EEPROM ---
+//read
 void Read(int *buffer) {
-  for (int i = 0; i < DATA_COUNT; i++) {
-    int addr = i * sizeof(int);
-    EEPROM.get(addr, buffer[i]);
-  }
+  memcpy(buffer, flash_ptr, sizeof(save));
 }
 
-// --- Load a specific preset ---
+//load
 void Load(int start) {
   Read(storedData);
-  // basic sanity check
-  //if (storedData[0] < 0 || storedData[0] > 5000) return;
 
+  if (storedData[start*5+4] < 0 || storedData[start*5+4] > 4095) return;
+  
   colorIndex    = storedData[start*5+0];
   blinkSpeed[0] = storedData[start*5+1];
   blinkSpeed[1] = storedData[start*5+2];
   blinkSpeed[2] = storedData[start*5+3];
   a             = storedData[start*5+4];
-
+  
   flashLoaded = true;
 }
 
 
-
 //setup & main loop
 void setup() {
-  Serial.begin(115200);
-  // Initialize EEPROM with enough size for 30 ints (4 bytes each = 120 bytes)
-  EEPROM.begin(DATA_COUNT * sizeof(int));
-  // other init code...
-  Load(0);  // load first preset at startup
-
   Serial.begin(115200);                   //  initialize Serial Output
   Serial.println(__FILE__);
   Serial.print("TLC5947_LIB_VERSION: \t");
@@ -388,8 +422,12 @@ void setup() {
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
     for (;;);
   }
+
+  Read(save);
+
   display.clearDisplay();
   display.display();
+  Load(0);
   needRedraw = true;
 }
 
@@ -484,12 +522,13 @@ void loop() {
           options_menu=0;
           menuMode = MENU_MAIN;
           activeSubmenu = -1;
-        } 
-      } else {
+        }
+        localNeedRedraw = true;
+      } else{
         options_menu=1;
+        localNeedRedraw = true;
       }
-      localNeedRedraw = true;
-        
+    
     } else {
         // Other submenus: single button press -> back to main
         menuMode = MENU_MAIN;
