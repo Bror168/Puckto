@@ -77,6 +77,7 @@ int activeSubmenu = -1;
 
 int blinkSpeed[] = {1, 2, 10}; //Sekunder prefix här
 int blink_select=0;
+int mod=60;
       
 int brightness = 5;        
 int colorIndex = 0;     
@@ -179,24 +180,30 @@ void drawSubmenu() {
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
 
+ 
+    
+
   if (activeSubmenu == 0) { // BLINK SPEED: Justerar On/Off-tider och längd
     display.setCursor(0, 0);
     display.println("Blink speed");
     display.setCursor(0, 14);
-    if (blink_select==0) display.print("> ");
+    if (blink_select == 0) display.print("> ");
     display.print("on: ");
     display.print(blinkSpeed[0]);
-    display.println(" S"); //Sekunder prefix här
+    display.println(" S");
     display.setCursor(0, 28);
-    if (blink_select==1) display.print("> ");
+    if (blink_select == 1) display.print("> ");
     display.print("off: ");
     display.print(blinkSpeed[1]);
-    display.println(" S"); //Sekunder prefix här
-    display.setCursor(0, 42);
-    if (blink_select==2) display.print("> ");
-    display.print("runtime:");
-    display.print(blinkSpeed[2]);
     display.println(" S");
+    display.setCursor(0, 42);
+    if (blink_select == 2) display.print("> ");
+    display.print("runtime: ");
+    display.print((int)(blinkSpeed[2] / 60));
+    display.print("|m ");
+    if (blink_select == 2 && mod == 1) display.print("*");
+    display.print(blinkSpeed[2] % 60);
+    display.print("|s");
     
   } else if (activeSubmenu == 1) { // INTENSITY: Ändrar ljusstyrka
     display.setCursor(0, 0);
@@ -214,54 +221,58 @@ void drawSubmenu() {
     display.println(colorIndex);
 
   } else if (activeSubmenu == 3) { // RUN: Kör programmet med tidskorrigering
-    int start = 0;
+
     float runs = blinkSpeed[2]/(blinkSpeed[0]+blinkSpeed[1]); //Sekunder prefix här
+    bool stop = false;
 
     unsigned long startTime;
     unsigned long endTime;
 
-    if (colorIndex==1) start=1;
+
     startTime = millis();
     
     for (float z=0.0; z<runs; z++){
       display.clearDisplay();
-      display.setCursor(28, 28); 
-      display.println("- AVBRYT -");
+      display.setCursor(10, 28); 
+      display.println("- press to cancel -");
+      display.setCursor(38, 50); 
+      display.print((int)(z/runs*100));
+      display.println("% done");
       display.display();
       
-      for (int i = start; i < led; i+=2){
+      for (int i = colorIndex; i < led; i+=2){
         tlc.setPWM(i, a);
         tlc.write();
       }
-      delay(blinkSpeed[0]*1000-23);
+      stop = vanta(blinkSpeed[0]*1000-23, stop);
       
-      for (int i = start; i < led; i+=2){
+      for (int i = colorIndex; i < led; i+=2){
         tlc.setPWM(i, 0);
         tlc.write();
       }
-      delay(blinkSpeed[1]*1000-23); 
+      stop = vanta(blinkSpeed[1]*1000-23, stop); 
     
-      if (buttonPressed()) { // Paus-meny vid knapptryck
+      if (stop) { // Paus-meny vid knapptryck
         for (int nedrakning = 10; nedrakning > 0; nedrakning--) {
-          display.clearDisplay(); 
-          display.setCursor(32, 14);
-          display.println("-pausad-");
-          display.setCursor(0, 28);
-          display.println(" -AVBRYT? SAKER? -"); 
-          display.setCursor(0, 42); 
-          display.print("- fortsatter om ");
+          display.clearDisplay();
+          display.setCursor(22, 14);
+          display.println("- Cancelling -");
+          display.setCursor(25, 28);
+          display.println("Are you sure?");
+          display.setCursor(16, 42);
+          display.print("Continuing in ");
           display.print(nedrakning);
-          display.println(" -");
+          display.println("-");
           display.display();
-
           bool avbruten = false;
-          for (int j = 0; j < 10; j++) {
+          while(buttonPressed());
+          for (int j = 0; j < 20; j++) {
             if (buttonPressed()) {
               z += runs;      
               avbruten = true; 
               break;          
             }
-            delay(100); 
+            delay(50); 
           } 
           if (avbruten) {
             break; 
@@ -269,7 +280,9 @@ void drawSubmenu() {
         }
         display.clearDisplay();
         display.display();
+        stop=false;
       }
+      display.clearDisplay();
       endTime = millis();
       display.setCursor(0, 48);
       display.print(endTime-startTime);
@@ -337,6 +350,15 @@ void redraw() {
   }
 
   needRedraw = false;
+}
+
+bool vanta(int ms, bool stop) { // stödfunktion för att avryta blinkloopen
+  if (stop) return true;
+  unsigned long start = millis();
+  while (millis() - start < ms) {
+    if (buttonPressed()) return true; 
+  }
+  return false;
 }
 
 // --- MINNES-FUNKTIONER (FLASH) ---
@@ -422,9 +444,10 @@ void setup() {
   needRedraw = true;
 }
 
-// Hanterar användarens input och menyval löpande
+
+// Laddar sparade värden till variablerna
 void loop() {
-  int step = readEncoderStep();        
+  int step = readEncoderStep();         
   bool btnNow = buttonPressed();      
   static bool btnPrev = false;        
   bool btnPressedEdge = (!btnPrev && btnNow); 
@@ -432,6 +455,7 @@ void loop() {
 
   bool localNeedRedraw = false;
 
+  // --- ENCODER-LOGIK ---
   if (step != 0) {
     if (menuMode == MENU_MAIN) {
       selectedIndex += step;
@@ -440,17 +464,15 @@ void loop() {
       localNeedRedraw = true;
     } else { 
       if (activeSubmenu == 0) {
-        int mod = 1; //Sekunder prefix här
-        if (blink_select==2) mod=1;
-        blinkSpeed[blink_select] = step * mod + blinkSpeed[blink_select];
-        if (blinkSpeed[blink_select] <= 0) blinkSpeed[blink_select] = 0;
+        blinkSpeed[blink_select] = (step * mod) + blinkSpeed[blink_select];
+        if (blinkSpeed[blink_select] < 1) blinkSpeed[blink_select] = 1;
         localNeedRedraw = true;
 
       } else if (activeSubmenu == 1) {
-        if (a>500) a = step * 100 + a;
-        if (a<=500) a = step * 10 + a;
-        if (a <= 0) a = 0;
-        if (a >4000) a=4000;
+        if (a > 500) a = step * 100 + a;
+        else a = step * 10 + a;
+        if (a < 0) a = 0;
+        if (a > 4000) a = 4000;
         localNeedRedraw = true;
 
       } else if (activeSubmenu == 2) {
@@ -459,69 +481,70 @@ void loop() {
         if (colorIndex >= COLOR_COUNT) colorIndex = 0;
         localNeedRedraw = true;
       
-      } else if (activeSubmenu == 4 && options_menu==0){
-        setings+= step;
-        if (setings>5) setings=1;
-        if (setings<1) setings=5;
+      } else if (activeSubmenu == 4 && options_menu == 0){
+        setings += step;
+        if (setings > 5) setings = 1;
+        if (setings < 1) setings = 5;
         localNeedRedraw = true;
-      } else if (activeSubmenu == 4 && options_menu==1){
-        options+= step;
-        if (options>2) options=0;
-        if (options<0) options=2;
+
+      } else if (activeSubmenu == 4 && options_menu == 1){
+        options += step;
+        if (options > 2) options = 0;
+        if (options < 0) options = 2;
         localNeedRedraw = true;
       }
     }
   }
 
+  // --- KNAPP-LOGIK ---
   if (btnPressedEdge) {
     if (menuMode == MENU_MAIN) {
       activeSubmenu = selectedIndex;
       menuMode = MENU_SUB;
+      blink_select = 0;
+      mod = 1;
       localNeedRedraw = true;
-    } else if (activeSubmenu == 0){ 
-        if (blink_select == 0) {
-          blink_select = 1;
-        }
-        else if (blink_select == 1) {
-          blink_select = 2;
-        } else {
+
+    } else if (activeSubmenu == 0) { 
+      if (blink_select == 0) {
+        blink_select = 1;
+      } else if (blink_select == 1) {
+        blink_select = 2;
+        mod = 1;
+      } else if (blink_select == 2) {
+        if (mod == 1) {
+          mod = 60;
+        } else { 
+          mod = 1;
           blink_select = 0;
           menuMode = MENU_MAIN;
           activeSubmenu = -1;
         }
-        localNeedRedraw = true;
+      }
+      localNeedRedraw = true;
+
     } else if (activeSubmenu == 4) {
-      if (options_menu==1){
-        if (options==0){
-          Load(setings);
-          options_menu=0;
-          menuMode = MENU_MAIN;
-          activeSubmenu = -1;
-        } else if (options==1){
-          Save(setings);
-          options_menu=0;
-          menuMode = MENU_MAIN;
-          activeSubmenu = -1;
-        } else if (options==2){
-          options_menu=0;
-          menuMode = MENU_MAIN;
-          activeSubmenu = -1;
-        }
+      if (options_menu == 1) {
+        if (options == 0) Load(setings);
+        else if (options == 1) Save(setings);
+        
+        options_menu = 0;
+        menuMode = MENU_MAIN;
+        activeSubmenu = -1;
         localNeedRedraw = true;
-      } else{
-        options_menu=1;
+      } else {
+        options_menu = 1;
         localNeedRedraw = true;
       }
     
     } else {
-        menuMode = MENU_MAIN;
-        activeSubmenu = -1;
-        Save(0);
-        localNeedRedraw = true;
-      }
+      menuMode = MENU_MAIN;
+      activeSubmenu = -1;
+      Save(0);
+      localNeedRedraw = true;
     }
-    
-  if (localNeedRedraw) needRedraw = true;
+  }
 
+  if (localNeedRedraw) needRedraw = true;
   redraw();
 }
