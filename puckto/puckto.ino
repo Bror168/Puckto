@@ -75,7 +75,7 @@ MenuMode menuMode = MENU_MAIN;
 int selectedIndex = 0;     
 int activeSubmenu = -1;   
 
-int blinkSpeed[] = {50, 50, 10}; 
+int blinkSpeed[] = {1, 2, 10}; //Sekunder prefix här
 int blink_select=0;
       
 int brightness = 5;        
@@ -186,12 +186,12 @@ void drawSubmenu() {
     if (blink_select==0) display.print("> ");
     display.print("on: ");
     display.print(blinkSpeed[0]);
-    display.println(" ms");
+    display.println(" S"); //Sekunder prefix här
     display.setCursor(0, 28);
     if (blink_select==1) display.print("> ");
     display.print("off: ");
     display.print(blinkSpeed[1]);
-    display.println(" ms");
+    display.println(" S"); //Sekunder prefix här
     display.setCursor(0, 42);
     if (blink_select==2) display.print("> ");
     display.print("runtime:");
@@ -215,7 +215,7 @@ void drawSubmenu() {
 
   } else if (activeSubmenu == 3) { // RUN: Kör programmet med tidskorrigering
     int start = 0;
-    float runs = blinkSpeed[2]*1000/(blinkSpeed[0]+blinkSpeed[1]+18.0198019802); 
+    float runs = blinkSpeed[2]/(blinkSpeed[0]+blinkSpeed[1]); //Sekunder prefix här
 
     unsigned long startTime;
     unsigned long endTime;
@@ -233,13 +233,13 @@ void drawSubmenu() {
         tlc.setPWM(i, a);
         tlc.write();
       }
-      delay(blinkSpeed[0]);
+      delay(blinkSpeed[0]*1000-23);
       
       for (int i = start; i < led; i+=2){
         tlc.setPWM(i, 0);
         tlc.write();
       }
-      delay(blinkSpeed[1]); 
+      delay(blinkSpeed[1]*1000-23); 
     
       if (buttonPressed()) { // Paus-meny vid knapptryck
         for (int nedrakning = 10; nedrakning > 0; nedrakning--) {
@@ -440,7 +440,7 @@ void loop() {
       localNeedRedraw = true;
     } else { 
       if (activeSubmenu == 0) {
-        int mod = 10;
+        int mod = 1; //Sekunder prefix här
         if (blink_select==2) mod=1;
         blinkSpeed[blink_select] = step * mod + blinkSpeed[blink_select];
         if (blinkSpeed[blink_select] <= 0) blinkSpeed[blink_select] = 0;
