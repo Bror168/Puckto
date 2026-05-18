@@ -80,7 +80,8 @@ int blink_select=0;
 int mod=60;
       
 int brightness = 5;        
-int colorIndex = 0;     
+int colorIndex[] = {0, 0, 0, 0, 0};
+int curent_color= 0;   
 
 bool needRedraw = true;
 
@@ -213,8 +214,17 @@ void drawSubmenu() {
     display.setCursor(0, 0);
     display.println("Color");
     display.setCursor(0, 16);
-    display.print("Value: ");
-    display.println(colors[colorIndex]);
+    for (int i=0; i<5; i++){
+      if (curent_color == i) {
+        display.print("[");
+        display.print(colors[colorIndex[i]][0]);
+        display.print("], ");
+      } else{
+        display.print(colors[colorIndex[i]][0]);
+        display.print(", ");
+      }
+    }
+    display.println();
 
   } else if (activeSubmenu == 3) { // RUN: Runs the program with time correction
 
@@ -235,13 +245,13 @@ void drawSubmenu() {
       display.println("% done");
       display.display();
       
-      for (int i = colorIndex; i < led; i+=2){
+      for (int i = colorIndex[curent_color]; i < led; i+=2){
         tlc.setPWM(i, a);
         tlc.write();
       }
       stop = vanta(blinkSpeed[0]*1000-23, stop);
       
-      for (int i = colorIndex; i < led; i+=2){
+      for (int i = colorIndex[curent_color]; i < led; i+=2){
         tlc.setPWM(i, 0);
         tlc.write();
       }
@@ -284,7 +294,10 @@ void drawSubmenu() {
 
       display.print("ms | ");
       display.println(runs);
+      curent_color++;
+      if (curent_color>4) curent_color=0;
     }
+    curent_color=0;
     
   } else if (activeSubmenu == 4 && options_menu==0) { // PRE-SAVES: Shows saved slots
     for (int slot = 1; slot <= 5; slot++) {
@@ -471,9 +484,9 @@ void loop() {
         localNeedRedraw = true;
 
       } else if (activeSubmenu == 2) {
-        colorIndex += step;
-        if (colorIndex < 0) colorIndex = COLOR_COUNT - 1;
-        if (colorIndex >= COLOR_COUNT) colorIndex = 0;
+        colorIndex[curent_color] += step;
+        if (colorIndex[curent_color] < 0) colorIndex[curent_color] = COLOR_COUNT - 1;
+        if (colorIndex[curent_color] >= COLOR_COUNT) colorIndex[curent_color] = 0;
         localNeedRedraw = true;
       
       } else if (activeSubmenu == 4 && options_menu == 0){
@@ -518,7 +531,23 @@ void loop() {
       }
       localNeedRedraw = true;
 
-    } else if (activeSubmenu == 4) {
+    } else if (activeSubmenu == 2) { 
+      if (curent_color == 0) {
+        curent_color = 1;
+      } else if (curent_color == 1) {
+        curent_color = 2;
+      } else if (curent_color == 2) {
+        curent_color = 3;
+      } else if (curent_color == 3) {
+        curent_color = 4;
+      } else if (curent_color == 4) {
+        blink_select = 0;
+        menuMode = MENU_MAIN;
+        activeSubmenu = -1;
+      }
+      localNeedRedraw = true;
+
+    }else if (activeSubmenu == 4) {
       if (options_menu == 1) {
         if (options == 0) Load(setings);
         else if (options == 1) Save(setings);
