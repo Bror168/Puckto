@@ -11,8 +11,8 @@
 #include "hardware/sync.h"
 
 // --- KONFIGURATION & MINNE ---
-#define FLASH_TARGET_OFFSET (256 * 1024) 
-#define DATA_COUNT 30
+#define FLASH_TARGET_OFFSET (216 * 1024) 
+#define DATA_COUNT 54
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -20,7 +20,7 @@
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 const uint8_t *flash_ptr = (const uint8_t *)(XIP_BASE + FLASH_TARGET_OFFSET);
-int save[DATA_COUNT] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+int save[DATA_COUNT] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 int storedData[DATA_COUNT];
 bool flashLoaded = false;
 int setings = 1;
@@ -225,6 +225,7 @@ void drawSubmenu() {
       }
     }
     display.println();
+    
 
   } else if (activeSubmenu == 3) { // RUN: Runs the program with time correction
 
@@ -310,18 +311,23 @@ void drawSubmenu() {
         display.print("  ");
       }
 
-      int mem_color = save[slot*5 + 0];
-      int mem_a = save[slot*5 + 4];
+      int mem_color = save[slot*9 + 0];
 
-      if (mem_color !=0 && mem_color !=1) {
+      if (mem_color !=0 && mem_color != 1) {
         display.print("Save ");
         display.print(slot);
         display.println(": Empty");
       } else {
+        String save_name = "";
+        for (int i = 0; i < 5; i++) {
+          int color_idx = save[slot*9  + i];
+          save_name += colors[color_idx][0];
+        }
+
         display.print("Save ");
         display.print(slot);
         display.print(":");
-        display.println(colors[mem_color]);
+        display.println(save_name);
       }
     } 
     
@@ -373,11 +379,15 @@ bool vanta(int ms, bool stop) { // stödfunktion för att avryta blinkloopen
 
 // Sparar aktuella värden till valt minnesställe
 void Save(int start) {
-  save[start*5+0] = colorIndex;
-  save[start*5+1] = blinkSpeed[0];
-  save[start*5+2] = blinkSpeed[1];
-  save[start*5+3] = blinkSpeed[2]; 
-  save[start*5+4] = a;
+  int base = start * 9;
+
+  for (int i = 0; i < 5; i++) {
+    save[base + i] = colorIndex[i];
+  }
+  save[base + 5] = blinkSpeed[0];
+  save[base + 6] = blinkSpeed[1];
+  save[base + 7] = blinkSpeed[2]; 
+  save[base + 8] = a;
   
   uint32_t ints = save_and_disable_interrupts();
   flash_range_erase(FLASH_TARGET_OFFSET, FLASH_SECTOR_SIZE);
@@ -398,13 +408,17 @@ void Read(int *buffer) {
 void Load(int start) {
   Read(storedData);
 
-  if (storedData[start*5+4] < 0 || storedData[start*5+4] > 4095) return;
+  int base = start * 9;
+  if (storedData[base + 8] < 0 || storedData[base + 8] > 4095) return;
   
-  colorIndex    = storedData[start*5+0];
-  blinkSpeed[0] = storedData[start*5+1];
-  blinkSpeed[1] = storedData[start*5+2];
-  blinkSpeed[2] = storedData[start*5+3];
-  a             = storedData[start*5+4];
+  // Hämtar tillbaka alla 5 färgelement
+  for (int i = 0; i < 5; i++) {
+    colorIndex[i] = storedData[base + i];
+  }
+  blinkSpeed[0] = storedData[base + 5];
+  blinkSpeed[1] = storedData[base + 6];
+  blinkSpeed[2] = storedData[base + 7];
+  a             = storedData[base + 8];
   
   flashLoaded = true;
 }
@@ -540,8 +554,8 @@ void loop() {
         curent_color = 3;
       } else if (curent_color == 3) {
         curent_color = 4;
-      } else if (curent_color == 4) {
-        blink_select = 0;
+      } else {
+        curent_color = 0;
         menuMode = MENU_MAIN;
         activeSubmenu = -1;
       }
