@@ -12,7 +12,7 @@
 
 // --- KONFIGURATION & MINNE ---
 #define FLASH_TARGET_OFFSET (216 * 1024) 
-#define DATA_COUNT 54
+#define DATA_COUNT 102
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -20,8 +20,8 @@
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 const uint8_t *flash_ptr = (const uint8_t *)(XIP_BASE + FLASH_TARGET_OFFSET);
-int save[DATA_COUNT] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-int storedData[DATA_COUNT];
+int save[DATA_COUNT];
+int storedData[DATA_COUNT]= {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 bool flashLoaded = false;
 int setings = 1;
 int options = 0;
@@ -75,7 +75,7 @@ MenuMode menuMode = MENU_MAIN;
 int selectedIndex = 0;     
 int activeSubmenu = -1;   
 
-int blinkSpeed[] = {1, 2, 10}; //Sekunder prefix här
+int blinkSpeed[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 10}; //Sekunder prefix här
 int blink_select=0;
 int mod=60;
       
@@ -184,24 +184,46 @@ void drawSubmenu() {
   if (activeSubmenu == 0) { // BLINK SPEED: Adjusts On/Off times and duration
     display.setCursor(0, 0);
     display.println("Blink speed");
+    
     display.setCursor(0, 14);
-    if (blink_select == 0) display.print("> ");
+    if (blink_select <5) display.print("> ");
     display.print("on: ");
-    display.print(blinkSpeed[0]);
-    display.println(" S");
+    for (int i=0; i<5; i++) {
+      if (blink_select==i){
+        display.print("[");
+        display.print(blinkSpeed[i]);
+        display.print("] ");
+      } else{ 
+        display.print(blinkSpeed[i]);
+        display.print(" ");
+      }
+    }
+    display.println();
+
+
     display.setCursor(0, 28);
-    if (blink_select == 1) display.print("> ");
+    if (blink_select >=5 && blink_select<10) display.print("> ");
     display.print("off: ");
-    display.print(blinkSpeed[1]);
-    display.println(" S");
+    for (int i=5; i<10; i++) {
+      if (blink_select==i){
+        display.print("[");
+        display.print(blinkSpeed[i]);
+        display.print("]");
+      } else{ 
+        display.print(blinkSpeed[i]) ;
+        display.print(" ");
+      }
+    }
+    display.println();
+
+
     display.setCursor(0, 42);
-    if (blink_select == 2) display.print("> ");
+    if (blink_select >= 10) display.print("> ");
     display.print("runtime: ");
-    display.print((int)(blinkSpeed[2] / 60));
+    display.print((int)(blinkSpeed[10] / 60));
     display.print("|m ");
-    if (blink_select == 2 && mod == 1) display.print("*");
-    display.print(blinkSpeed[2] % 60);
-    display.print("|s");
+    display.print(blinkSpeed[10] % 60);
+    display.println("|s");
     
   } else if (activeSubmenu == 1) { // INTENSITY: Changes brightness
     display.setCursor(0, 0);
@@ -229,14 +251,15 @@ void drawSubmenu() {
 
   } else if (activeSubmenu == 3) { // RUN: Runs the program with time correction
 
-    float runs = blinkSpeed[2]/(blinkSpeed[0]+blinkSpeed[1]); // Seconds prefix here
+    int sum=0; 
+    for (int i=0; i<10; i++ ) sum+=blinkSpeed[i];
+    float runs = blinkSpeed[10]/(sum*0.2); // Seconds prefix here
     bool stop = false;
 
     unsigned long startTime;
     unsigned long endTime;
 
     startTime = millis();
-    
     for (float z=0.0; z<runs; z++){
       display.clearDisplay();
       display.setCursor(10, 28); 
@@ -250,13 +273,13 @@ void drawSubmenu() {
         tlc.setPWM(i, a);
         tlc.write();
       }
-      stop = vanta(blinkSpeed[0]*1000-23, stop);
+      stop = vanta(blinkSpeed[curent_color]*1000-23, stop);
       
       for (int i = colorIndex[curent_color]; i < led; i+=2){
         tlc.setPWM(i, 0);
         tlc.write();
       }
-      stop = vanta(blinkSpeed[1]*1000-23, stop); 
+      stop = vanta(blinkSpeed[curent_color+5]*1000-23, stop); 
     
       if (stop) { // Pause menu on button press
         for (int nedrakning = 10; nedrakning > 0; nedrakning--) {
@@ -311,7 +334,7 @@ void drawSubmenu() {
         display.print("  ");
       }
 
-      int mem_color = save[slot*9 + 0];
+      int mem_color = save[slot*17 + 0];
 
       if (mem_color !=0 && mem_color != 1) {
         display.print("Save ");
@@ -320,7 +343,7 @@ void drawSubmenu() {
       } else {
         String save_name = "";
         for (int i = 0; i < 5; i++) {
-          int color_idx = save[slot*9  + i];
+          int color_idx = save[slot*17  + i];
           save_name += colors[color_idx][0];
         }
 
@@ -368,6 +391,7 @@ void redraw() {
 
 bool vanta(int ms, bool stop) { // stödfunktion för att avryta blinkloopen
   if (stop) return true;
+  if (ms<0) ms=0;
   unsigned long start = millis();
   while (millis() - start < ms) {
     if (buttonPressed()) return true; 
@@ -379,15 +403,15 @@ bool vanta(int ms, bool stop) { // stödfunktion för att avryta blinkloopen
 
 // Sparar aktuella värden till valt minnesställe
 void Save(int start) {
-  int base = start * 9;
+  int base = start * 17;
 
   for (int i = 0; i < 5; i++) {
     save[base + i] = colorIndex[i];
   }
-  save[base + 5] = blinkSpeed[0];
-  save[base + 6] = blinkSpeed[1];
-  save[base + 7] = blinkSpeed[2]; 
-  save[base + 8] = a;
+  for (int i = 0; i < 11; i++) {
+    save[base + 5 + i] = blinkSpeed[i];
+  }
+  save[base + 16] = a;
   
   uint32_t ints = save_and_disable_interrupts();
   flash_range_erase(FLASH_TARGET_OFFSET, FLASH_SECTOR_SIZE);
@@ -408,17 +432,17 @@ void Read(int *buffer) {
 void Load(int start) {
   Read(storedData);
 
-  int base = start * 9;
-  if (storedData[base + 8] < 0 || storedData[base + 8] > 4095) return;
+  int base = start * 17;
+  if (storedData[base + 16] < 0 || storedData[base + 16] > 4095) return;
   
   // Hämtar tillbaka alla 5 färgelement
   for (int i = 0; i < 5; i++) {
     colorIndex[i] = storedData[base + i];
   }
-  blinkSpeed[0] = storedData[base + 5];
-  blinkSpeed[1] = storedData[base + 6];
-  blinkSpeed[2] = storedData[base + 7];
-  a             = storedData[base + 8];
+  for (int i = 0; i < 11; i++) {
+    blinkSpeed[i] = storedData[base + 5 + i];
+  }
+  a             = storedData[base + 16];
   
   flashLoaded = true;
 }
@@ -487,11 +511,11 @@ void loop() {
     } else { 
       if (activeSubmenu == 0) {
         blinkSpeed[blink_select] = (step * mod) + blinkSpeed[blink_select];
-        if (blinkSpeed[blink_select] < 1) blinkSpeed[blink_select] = 1;
+        if (blinkSpeed[blink_select] < 1) blinkSpeed[blink_select] = 0;
         localNeedRedraw = true;
 
       } else if (activeSubmenu == 1) {
-        if (a > 500) a = step * 100 + a;
+        if (a > 490) a = step * 100 + a;
         else a = step * 10 + a;
         if (a < 0) a = 0;
         if (a > 4000) a = 4000;
@@ -528,15 +552,13 @@ void loop() {
       localNeedRedraw = true;
 
     } else if (activeSubmenu == 0) { 
-      if (blink_select == 0) {
-        blink_select = 1;
-      } else if (blink_select == 1) {
-        blink_select = 2;
-        mod = 1;
-      } else if (blink_select == 2) {
+      if (blink_select < 10) {
+        blink_select += 1;
+      } else if (blink_select == 10) {
         if (mod == 1) {
-          mod = 60;
-        } else { 
+          mod = 60; // Byt till att redigera minuter
+        } else {
+          // Gå ur menyn om vi har klickat förbi minuter
           mod = 1;
           blink_select = 0;
           menuMode = MENU_MAIN;
